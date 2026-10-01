@@ -1,0 +1,12 @@
+.claude/rules/shared
+.claude/skills/new-module
+node_modules/
+dist/
+coverage/
+reports/
+.stryker-tmp/
+.env
+*.log
+.idea/
+src/infrastructure/database/generated/
+*.tsbuildinfo

@@ -1,0 +1,11 @@
+dist
+coverage
+reports
+.stryker-tmp
+pnpm-lock.yaml
+prisma/migrations
+src/infrastructure/database/generated
+docs/openapi.json
+.claude/rules/shared
+.claude/skills
+docs/traceability.md
