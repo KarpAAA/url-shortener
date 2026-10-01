@@ -1,0 +1,512 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/shorten": {
+      "post": {
+        "description": "Creates a new short link. Not idempotent: shortening the same URL again creates another link with its own code and its own statistics.",
+        "operationId": "shortenUrl",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShortenUrlDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The short link was created.",
+            "headers": {
+              "Location": {
+                "description": "Path of the statistics resource of the new link.",
+                "schema": {
+                  "type": "string",
+                  "example": "/stats/aB3xY9z"
+                }
+              }
+            },
+            "links": {
+              "redirect": {
+                "operationId": "redirect",
+                "parameters": {
+                  "code": "$response.body#/code"
+                },
+                "description": "Visit the short link."
+              },
+              "getStats": {
+                "operationId": "getStats",
+                "parameters": {
+                  "code": "$response.body#/code"
+                },
+                "description": "Read the statistics of the short link."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortLinkDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not valid JSON, has the wrong shape, or the URL is not acceptable.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                },
+                "examples": {
+                  "invalidUrl": {
+                    "value": {
+                      "type": "about:blank",
+                      "title": "Bad Request",
+                      "status": 400,
+                      "detail": "URL scheme must be http or https",
+                      "instance": "/shorten",
+                      "code": "INVALID_URL",
+                      "correlationId": "0194a1b2-c3d4-7e5f-8a6b-0123456789ab"
+                    }
+                  },
+                  "validationFailed": {
+                    "value": {
+                      "type": "about:blank",
+                      "title": "Bad Request",
+                      "status": 400,
+                      "detail": "Request validation failed",
+                      "instance": "/shorten",
+                      "code": "VALIDATION_FAILED",
+                      "correlationId": "0194a1b2-c3d4-7e5f-8a6b-0123456789ab",
+                      "errors": [
+                        {
+                          "path": "url",
+                          "code": "isString",
+                          "message": "url must be a string"
+                        }
+                      ]
+                    }
+                  },
+                  "malformedJson": {
+                    "value": {
+                      "type": "about:blank",
+                      "title": "Bad Request",
+                      "status": 400,
+                      "detail": "Request body is not valid JSON",
+                      "instance": "/shorten",
+                      "code": "MALFORMED_JSON",
+                      "correlationId": "0194a1b2-c3d4-7e5f-8a6b-0123456789ab"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body is larger than 10 kB.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                },
+                "examples": {
+                  "tooLarge": {
+                    "value": {
+                      "type": "about:blank",
+                      "title": "Payload Too Large",
+                      "status": 413,
+                      "detail": "Request body is too large",
+                      "instance": "/shorten",
+                      "code": "PAYLOAD_TOO_LARGE",
+                      "correlationId": "0194a1b2-c3d4-7e5f-8a6b-0123456789ab"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many links created from this address.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                },
+                "examples": {
+                  "rateLimited": {
+                    "value": {
+                      "type": "about:blank",
+                      "title": "Too Many Requests",
+                      "status": 429,
+                      "detail": "ThrottlerException: Too Many Requests",
+                      "instance": "/shorten",
+                      "code": "RATE_LIMITED",
+                      "correlationId": "0194a1b2-c3d4-7e5f-8a6b-0123456789ab"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A unique code could not be allocated; retrying is safe.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                },
+                "examples": {
+                  "allocationFailed": {
+                    "value": {
+                      "type": "about:blank",
+                      "title": "Service Unavailable",
+                      "status": 503,
+                      "detail": "Service temporarily unavailable, retry later",
+                      "instance": "/shorten",
+                      "code": "SHORT_CODE_ALLOCATION_FAILED",
+                      "correlationId": "0194a1b2-c3d4-7e5f-8a6b-0123456789ab"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Shorten a URL",
+        "tags": [
+          "links"
+        ]
+      }
+    },
+    "/stats/{code}": {
+      "get": {
+        "description": "Reading statistics does not count as a visit.",
+        "operationId": "getStats",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "description": "Short code: 7 base62 characters.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9A-Za-z]{7}$",
+              "minLength": 7,
+              "maxLength": 7
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkStatsDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No link has this code, or the value is not a well-formed code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                },
+                "examples": {
+                  "notFound": {
+                    "value": {
+                      "type": "about:blank",
+                      "title": "Not Found",
+                      "status": 404,
+                      "detail": "Short link not found",
+                      "instance": "/stats/aB3xY9z",
+                      "code": "LINK_NOT_FOUND",
+                      "correlationId": "0194a1b2-c3d4-7e5f-8a6b-0123456789ab"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Visit statistics of a short link",
+        "tags": [
+          "links"
+        ]
+      }
+    },
+    "/{code}": {
+      "get": {
+        "description": "Counts one visit and redirects. The redirect is a `302` with `Cache-Control: no-store`: browsers do not cache it, so every visit reaches the server and is counted.",
+        "operationId": "redirect",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "description": "Short code: 7 base62 characters.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9A-Za-z]{7}$",
+              "minLength": 7,
+              "maxLength": 7
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the original URL.",
+            "headers": {
+              "Location": {
+                "description": "The original URL.",
+                "schema": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "Cache-Control": {
+                "description": "Always `no-store`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No link has this code, or the value is not a well-formed code.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                },
+                "examples": {
+                  "notFound": {
+                    "value": {
+                      "type": "about:blank",
+                      "title": "Not Found",
+                      "status": 404,
+                      "detail": "Short link not found",
+                      "instance": "/aB3xY9z",
+                      "code": "LINK_NOT_FOUND",
+                      "correlationId": "0194a1b2-c3d4-7e5f-8a6b-0123456789ab"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Redirect to the original URL",
+        "tags": [
+          "links"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "URL shortener",
+    "description": "Shortens URLs, redirects short codes to their destination and reports visit counts.\n\nEvery error is an RFC 9457 `application/problem+json` document. Branch on its `code`;\n`detail` is for humans. Every response carries `x-correlation-id`.",
+    "version": "1.0.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "schemas": {
+      "ProblemFieldErrorDto": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path of the offending field, dot-notation.",
+            "example": "url"
+          },
+          "code": {
+            "type": "string",
+            "description": "Name of the violated constraint.",
+            "example": "isString"
+          },
+          "message": {
+            "type": "string",
+            "example": "url must be a string"
+          }
+        },
+        "required": [
+          "path",
+          "code",
+          "message"
+        ]
+      },
+      "ProblemDetailsDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "RFC 9457 problem type. Always `about:blank`: the problem has no semantics beyond the HTTP status code, and `code` is the machine-readable discriminator.",
+            "example": "about:blank"
+          },
+          "title": {
+            "type": "string",
+            "description": "HTTP status phrase.",
+            "example": "Bad Request"
+          },
+          "status": {
+            "type": "number",
+            "description": "HTTP status code.",
+            "example": 400
+          },
+          "detail": {
+            "type": "string",
+            "description": "Human-readable explanation. May change; do not branch on it.",
+            "example": "URL scheme must be http or https"
+          },
+          "instance": {
+            "type": "string",
+            "description": "Path of the request that failed.",
+            "example": "/shorten"
+          },
+          "code": {
+            "type": "string",
+            "description": "Stable, machine-readable error code. Branch on this.",
+            "example": "INVALID_URL"
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Id of the request, also returned in the `x-correlation-id` header.",
+            "example": "0194a1b2-c3d4-7e5f-8a6b-0123456789ab"
+          },
+          "errors": {
+            "description": "Per-field errors. Present only when `code` is `VALIDATION_FAILED`.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProblemFieldErrorDto"
+            }
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "code",
+          "correlationId"
+        ]
+      },
+      "ShortenUrlDto": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The URL to shorten: an absolute `http` or `https` URL with a host, without credentials, not pointing to this service. International (IDN/unicode) URLs are accepted. A string that matches the pattern can still be rejected with `400 INVALID_URL` when it is not a valid URL.",
+            "example": "https://example.com/some/very/long/path?utm_source=newsletter",
+            "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://[^/\\\\?#]",
+            "minLength": 1,
+            "maxLength": 2048
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "ShortLinkDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The short code: 7 base62 characters.",
+            "example": "aB3xY9z",
+            "pattern": "^[0-9A-Za-z]{7}$",
+            "minLength": 7,
+            "maxLength": 7
+          },
+          "shortUrl": {
+            "type": "string",
+            "description": "The short URL to share; visiting it redirects to `originalUrl`.",
+            "example": "http://localhost:3000/aB3xY9z",
+            "format": "uri"
+          },
+          "originalUrl": {
+            "type": "string",
+            "description": "The destination, normalised (lower-cased host, punycode, percent-encoding).",
+            "example": "https://example.com/some/very/long/path?utm_source=newsletter",
+            "maxLength": 2048
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-01-15T10:00:00.000Z"
+          }
+        },
+        "required": [
+          "code",
+          "shortUrl",
+          "originalUrl",
+          "createdAt"
+        ]
+      },
+      "LinkStatsDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "aB3xY9z",
+            "pattern": "^[0-9A-Za-z]{7}$",
+            "minLength": 7,
+            "maxLength": 7
+          },
+          "originalUrl": {
+            "type": "string",
+            "example": "https://example.com/some/very/long/path?utm_source=newsletter",
+            "maxLength": 2048
+          },
+          "visits": {
+            "type": "integer",
+            "description": "How many times the short link has been visited (successful redirects).",
+            "example": 42,
+            "minimum": 0
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-01-15T10:00:00.000Z"
+          },
+          "lastVisitedAt": {
+            "type": "string",
+            "description": "Time of the most recent visit; `null` until the link is visited.",
+            "format": "date-time",
+            "nullable": true,
+            "example": "2026-02-01T08:30:00.000Z"
+          }
+        },
+        "required": [
+          "code",
+          "originalUrl",
+          "visits",
+          "createdAt",
+          "lastVisitedAt"
+        ]
+      }
+    }
+  }
+}
