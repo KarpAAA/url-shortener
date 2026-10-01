@@ -1,0 +1,54 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # NestJS 12 is ESM-only; the upgrade is a deliberate migration (docs/adr/0001)
+      - dependency-name: '@nestjs/*'
+        update-types: [version-update:semver-major]
+      # Prisma 8 is a release candidate (docs/adr/0002)
+      - dependency-name: 'prisma'
+        update-types: [version-update:semver-major]
+      - dependency-name: '@prisma/*'
+        update-types: [version-update:semver-major]
+      # the ESLint config follows the conventions template: eslint 9 + boundaries 5
+      - dependency-name: 'eslint'
+        update-types: [version-update:semver-major]
+      - dependency-name: 'eslint-plugin-boundaries'
+        update-types: [version-update:semver-major]
+      # Stryker's Vitest runner mis-attributes tests under Vitest 5 (docs/adr/0011)
+      - dependency-name: 'vitest'
+        update-types: [version-update:semver-major]
+      # typescript-eslint supports TypeScript < 6.1
+      - dependency-name: 'typescript'
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci

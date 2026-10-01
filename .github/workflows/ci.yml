@@ -1,0 +1,176 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    # nightly: the fuzzer runs with a fresh seed, mutation testing keeps its report current
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  HUSKY: 0
+
+jobs:
+  quality:
+    name: Lint, types, unit and architecture tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Format check
+        run: pnpm format:check
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Architecture tests
+        run: pnpm test:arch
+      - name: Unit and property tests
+        run: pnpm test:unit
+      - name: Build
+        run: pnpm build
+      - name: OpenAPI document is up to date
+        run: pnpm openapi:check
+      - name: Every requirement has tests; traceability is up to date
+        run: pnpm trace:check
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level=high
+
+  integration:
+    name: Integration and API tests (Testcontainers)
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Integration and API tests
+        run: pnpm test:e2e
+
+  migrations:
+    name: Migrations from scratch + drift check
+    runs-on: ubuntu-latest
+    needs: quality
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: shortener
+          POSTGRES_PASSWORD: shortener
+          POSTGRES_DB: shortener
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shortener -d shortener"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgresql://shortener:shortener@localhost:5432/shortener
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply every migration to an empty database
+        run: pnpm db:migrate
+      - name: Database matches the Prisma schema
+        run: pnpm db:check
+
+  commits:
+    name: Commit messages
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Lint the commits of this push or pull request
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            range="origin/$BASE_REF..HEAD"
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+            && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            range="$BEFORE..HEAD"
+          else
+            range="HEAD" # first push: every commit, including the root
+          fi
+          status=0
+          for sha in $(git rev-list --no-merges "$range"); do
+            git log -1 --format=%B "$sha" | pnpm exec commitlint || status=1
+          done
+          exit $status
+
+  contract:
+    name: Schema fuzzing (Schemathesis)
+    runs-on: ubuntu-latest
+    needs: quality
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fuzz the API against its OpenAPI schema
+        run: >-
+          docker compose -f docker-compose.yml -f docker-compose.schemathesis.yml
+          run --rm --build schemathesis
+      - name: Application logs
+        if: failure()
+        run: docker compose -f docker-compose.yml -f docker-compose.schemathesis.yml logs app
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.schemathesis.yml down -v
+
+  mutation:
+    name: Mutation testing (Stryker)
+    runs-on: ubuntu-latest
+    needs: quality
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Mutation tests on domain/ and application/
+        run: pnpm test:mutation
+      - name: Mutation score
+        if: always()
+        run: node scripts/mutation-summary.mjs reports/mutation/mutation.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: reports/mutation/
+          if-no-files-found: error
