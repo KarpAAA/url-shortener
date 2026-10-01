@@ -1,0 +1,22 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/infrastructure/database/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// One shortened URL. `code` is the public identifier; `id` is never exposed.
+model Link {
+  id            String    @id @db.Uuid
+  code          String    @unique
+  originalUrl   String    @map("original_url")
+  visits        BigInt    @default(0)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  lastVisitedAt DateTime? @map("last_visited_at") @db.Timestamptz(3)
+
+  @@map("links")
+}
