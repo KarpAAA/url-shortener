@@ -1,0 +1,26 @@
+# Schemathesis configuration. Every check stays enabled (`--checks all`). The settings below
+# do not switch anything off: they tell two checks which of this API's *documented* statuses
+# count as "accepted" and "rejected", where the built-in defaults assume something else.
+
+[[operations]]
+include-name = "POST /shorten"
+
+# `positive_data_acceptance` assumes a body that is valid against the JSON Schema is accepted.
+# For `url` that cannot hold: whether a string is an acceptable destination depends on rules
+# JSON Schema cannot express — the WHATWG URL parser (a host can be invalid), "no
+# credentials", and "not a link to this service", which depends on the deployment. Such a
+# request gets the documented `400 INVALID_URL`.
+[operations.checks.positive_data_acceptance]
+expected-statuses = ["2xx", "400"]
+
+# An invalid body may also be rejected for its size (documented 413) or its charset (415)
+# before its shape is looked at. The default list does not include 413.
+[operations.checks.negative_data_rejection]
+expected-statuses = ["400", "413", "415"]
+
+[[operations]]
+include-name = "GET /{code}"
+
+# The success response of a redirect endpoint is the documented 302, not a 2xx.
+[operations.checks.positive_data_acceptance]
+expected-statuses = ["302", "404"]

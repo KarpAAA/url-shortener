@@ -1,0 +1,34 @@
+# Schema fuzzing. Extends the base file — the stack under test is exactly the one
+# `docker compose up` starts, not a copy of it:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.schemathesis.yml \
+#     up --build --abort-on-container-exit --exit-code-from schemathesis
+#
+# Schemathesis reads the live contract from /docs-json, generates valid and invalid requests
+# for every operation and checks each response against the schema. Its exit code is the
+# result of the run.
+services:
+  app:
+    environment:
+      # the fuzzer sends thousands of POST /shorten from one address
+      SHORTEN_RATE_LIMIT: 1000000
+      LOG_LEVEL: warn
+
+  schemathesis:
+    image: schemathesis/schemathesis:4.28.0
+    depends_on:
+      app:
+        condition: service_healthy
+    volumes:
+      - ./fuzz:/fuzz:ro
+    environment:
+      PYTHONPATH: /fuzz
+      # fuzz/hooks.py: do not follow the 302 of GET /{code} to a fuzzed host
+      SCHEMATHESIS_HOOKS: hooks
+    command:
+      - --config-file=/fuzz/schemathesis.toml
+      - run
+      - http://app:3000/docs-json
+      - --checks=all
+      - --max-examples=200
+      - --wait-for-schema=30
