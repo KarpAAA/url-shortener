@@ -15,7 +15,7 @@ services:
       LOG_LEVEL: warn
 
   schemathesis:
-    image: schemathesis/schemathesis:4.28.0
+    image: schemathesis/schemathesis:v4.32.0
     depends_on:
       app:
         condition: service_healthy
